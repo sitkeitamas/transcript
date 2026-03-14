@@ -2,6 +2,8 @@
 
 Tanulmányi eredmények kinyerése PDF-ből Groq (Llama) API-val; webes felület + JSON API.
 
+**Részletes dokumentáció (követelmények, architektúra, Groq darabolás, paraméterek, nehézségek, deploy):** [DOCUMENTATION.md](DOCUMENTATION.md)
+
 ## Futtatás
 
 - **Lokálisan:** `uvicorn app:app --host 0.0.0.0 --port 8111` (vagy `.venv` + `pip install -r requirements.txt` után).
