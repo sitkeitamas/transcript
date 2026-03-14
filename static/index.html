@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF Eredménykiolvasó</title>
+    <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>PDF Eredménykiolvasó</h1>
+        <p>Tanulmányi eredmények automatikus kinyerése Groq (Llama) API-val</p>
+    </header>
+
+    <section class="default-link" id="default-section">
+        <p class="default-hint">Feltöltés nélkül, csak az alapértelmezett PDF elemzése (a <code>pdf/</code> mappából):</p>
+        <div id="default-button-area"></div>
+        <div id="default-loading" class="loading-overlay" style="display: none;">
+            <div class="loading-box">
+                <p><strong>Feldolgozás folyamatban…</strong></p>
+                <p>Ez 2–10 percig is eltarthat (Groq rate limit miatt). Ne zárd be a lapot.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="upload-section">
+        <h2>Vagy másik dokumentum feltöltése</h2>
+        <form id="upload-form" class="upload-form">
+            <div class="form-row">
+                <label for="file">PDF fájl</label>
+                <input type="file" id="file" name="file" accept="application/pdf" required>
+            </div>
+            <div class="form-row">
+                <label for="label">Dokumentum címke (opcionális)</label>
+                <input type="text" id="label" name="label" placeholder="pl. BSc diploma, MSc kivonat">
+            </div>
+            <button type="submit">Feltöltés és elemzés</button>
+        </form>
+    </section>
+
+    <section id="error-section" class="error" style="display: none;">
+        <h2>Hiba történt</h2>
+        <p id="error-text"></p>
+    </section>
+
+    <section id="results-section" style="display: none;">
+        <header class="results-header">
+            <h2>Eredmények</h2>
+            <span class="badge" id="doc-label-badge"></span>
+        </header>
+        <div class="meta" id="meta-area"></div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tárgy neve</th>
+                    <th>Kód</th>
+                    <th>Félév / év</th>
+                    <th>Kredit</th>
+                    <th>Osztályzat</th>
+                </tr>
+            </thead>
+            <tbody id="results-tbody"></tbody>
+        </table>
+        <section class="json-section" id="json-section" style="display: none;">
+            <h3>Nyers JSON eredmény</h3>
+            <pre><code id="raw-json-code"></code></pre>
+        </section>
+    </section>
+</div>
+<script src="static/js/app.js"></script>
+</body>
+</html>

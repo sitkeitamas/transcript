@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Eredménykiolvasó</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>PDF Eredménykiolvasó</h1>
+        <p>Tanulmányi eredmények automatikus kinyerése Groq (Llama) API-val</p>
+    </header>
+
+    {% if not show_upload %}
+        <p class="back-link"><a href="/">← Vissza a kezdőlapra</a></p>
+    {% endif %}
+
+    <section class="default-link">
+        {% if default_pdf_name %}
+            <p class="default-hint">Feltöltés nélkül, csak az alapértelmezett PDF elemzése (a <code>pdf/</code> mappából):</p>
+            <button type="button" class="btn-default" id="run-default-btn" data-pdf-name="{{ default_pdf_name }}">Alapértelmezett elemzése: {{ default_pdf_name }}</button>
+            <div id="default-loading" class="loading-overlay" style="display: none;">
+                <div class="loading-box">
+                    <p><strong>Feldolgozás folyamatban…</strong></p>
+                    <p>Ez 2–10 percig is eltarthat (Groq rate limit miatt). Ne zárd be a lapot.</p>
+                </div>
+            </div>
+        {% else %}
+            <p class="no-default">Nincs alapértelmezett PDF. Tegyél egy .pdf fájlt a <code>pdf/</code> mappába, majd frissítsd az oldalt.</p>
+        {% endif %}
+    </section>
+
+    <section class="upload-section">
+        <h2>Vagy másik dokumentum feltöltése</h2>
+        <form action="/upload" method="post" enctype="multipart/form-data" class="upload-form">
+            <div class="form-row">
+                <label for="file">PDF fájl</label>
+                <input type="file" id="file" name="file" accept="application/pdf" required>
+            </div>
+            <div class="form-row">
+                <label for="label">Dokumentum címke (opcionális)</label>
+                <input type="text" id="label" name="label" placeholder="pl. BSc diploma, MSc kivonat">
+            </div>
+            <button type="submit">Feltöltés és elemzés</button>
+        </form>
+    </section>
+
+    {% if error %}
+        <section class="error">
+            <h2>Hiba történt</h2>
+            <p>{{ error }}</p>
+        </section>
+    {% endif %}
+
+    {% if result %}
+        <section class="results">
+            <header class="results-header">
+                <h2>Eredmények</h2>
+                {% if doc_label %}
+                    <span class="badge">Dokumentum: {{ doc_label }}</span>
+                {% endif %}
+            </header>
+
+            <div class="meta">
+                {% if student_name %}
+                    <div><strong>Hallgató neve:</strong> {{ student_name }}</div>
+                {% endif %}
+                {% if institution %}
+                    <div><strong>Intézmény:</strong> {{ institution }}</div>
+                {% endif %}
+            </div>
+
+            <table>
+                <thead>
+                <tr>
+                    <th>Tárgy neve</th>
+                    <th>Kód</th>
+                    <th>Félév / év</th>
+                    <th>Kredit</th>
+                    <th>Osztályzat</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in result %}
+                    <tr>
+                        <td>{{ row.course_name or '' }}</td>
+                        <td>{{ row.course_code or '' }}</td>
+                        <td>{{ row.term or '' }}</td>
+                        <td>{{ row.credits if row.credits is not none else '' }}</td>
+                        <td>{{ row.grade or '' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+
+            {% if raw_json %}
+                <section class="json-section">
+                    <h3>Nyers JSON eredmény</h3>
+                    <pre><code>{{ raw_json }}</code></pre>
+                </section>
+            {% endif %}
+        </section>
+    {% endif %}
+</div>
+<script>
+(function() {
+    var btn = document.getElementById('run-default-btn');
+    var loading = document.getElementById('default-loading');
+    if (!btn || !loading) return;
+    btn.addEventListener('click', function() {
+        loading.style.display = 'flex';
+        btn.disabled = true;
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, 600000);
+        fetch('/process-default', { signal: controller.signal })
+            .then(function(r) { return r.text(); })
+            .then(function(html) {
+                clearTimeout(timeoutId);
+                document.open();
+                document.write(html);
+                document.close();
+            })
+            .catch(function(err) {
+                clearTimeout(timeoutId);
+                loading.style.display = 'none';
+                btn.disabled = false;
+                alert('Hiba vagy időtúllépés: ' + (err.message || err) + '. Próbáld újra, vagy futtasd a terminálból: python test_performance.py');
+            });
+    });
+})();
+</script>
+</body>
+</html>
+
