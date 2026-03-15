@@ -12,9 +12,9 @@ body {
 }
 
 .container {
-    max-width: 1100px;
-    margin: 40px auto;
-    padding: 24px;
+    max-width: min(1400px, 96vw);
+    margin: 20px auto;
+    padding: 24px 28px;
     background: radial-gradient(circle at top left, #1f2937, #020617);
     border-radius: 16px;
     box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.9);
@@ -31,6 +31,15 @@ header h1 {
     margin: 0;
     font-size: 1.8rem;
     letter-spacing: 0.02em;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+header h1 .app-version {
+    font-size: 0.5em;
+    font-weight: normal;
+    color: rgba(148, 163, 184, 0.9);
 }
 
 header p {
@@ -38,12 +47,154 @@ header p {
     color: #9ca3af;
 }
 
-.default-link {
+.actions-row {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
     margin-bottom: 24px;
 }
 
+@media (min-width: 900px) {
+    .actions-row {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 32px;
+    }
+    .actions-row .default-link {
+        flex: 1;
+        min-width: 0;
+    }
+    .actions-row .upload-section {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+.models-section {
+    margin-bottom: 28px;
+}
+
+.models-section h2 {
+    margin: 0 0 4px 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+}
+
+.models-hint {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.models-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.models-list .model-option {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(71, 85, 105, 0.4);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.models-list .model-option:hover {
+    background: rgba(51, 65, 85, 0.5);
+    border-color: rgba(100, 116, 139, 0.5);
+}
+
+.models-list .model-option input {
+    margin: 0 10px 0 0;
+    flex-shrink: 0;
+}
+
+.models-list .model-limit {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    margin-left: 6px;
+}
+
+.meta .model-used,
+.meta .usage-tokens,
+.meta .rate-limit {
+    margin-top: 4px;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+/* Log szekció */
+.log-section {
+    margin-top: 2rem;
+    border-top: 1px solid #334155;
+    padding-top: 1rem;
+}
+
+.log-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem 0;
+    font-size: 1rem;
+}
+
+.log-toggle {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.log-toggle:hover {
+    color: #e2e8f0;
+}
+
+.log-refresh {
+    background: #334155;
+    border: none;
+    color: #e2e8f0;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.2rem 0.4rem;
+    border-radius: 4px;
+}
+
+.log-refresh:hover {
+    background: #475569;
+}
+
+.log-content {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 0.75rem;
+    max-height: 200px;
+    overflow: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+.log-content pre.log-lines {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.default-link {
+    margin-bottom: 28px;
+}
+
 .default-link .default-hint {
-    margin: 0 0 8px 0;
+    margin: 0 0 10px 0;
     font-size: 0.9rem;
     color: #94a3b8;
 }
@@ -52,6 +203,13 @@ header p {
     background: rgba(51, 65, 85, 0.8);
     padding: 2px 6px;
     border-radius: 4px;
+}
+
+.default-button-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
 }
 
 .default-link .no-default {
@@ -142,22 +300,44 @@ h2 {
 }
 
 .upload-section {
-    margin-bottom: 24px;
-    padding: 16px 0 8px;
+    margin-bottom: 28px;
+    padding-top: 4px;
+}
+
+.upload-section h2 {
+    margin-bottom: 14px;
 }
 
 .upload-form {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    align-items: flex-end;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.upload-form .form-actions {
+    margin-top: 4px;
 }
 
 .form-row {
     display: flex;
     flex-direction: column;
-    min-width: 260px;
-    flex: 1;
+    width: 100%;
+}
+
+.form-row label {
+    margin-bottom: 6px;
+}
+
+.form-row-file input[type="file"] {
+    width: 100%;
+    max-width: 100%;
+}
+
+.file-hint {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    margin-top: 6px;
+    min-height: 1.2em;
 }
 
 label {
@@ -187,6 +367,12 @@ input[type="file"]::file-selector-button {
 
 input[type="file"]::file-selector-button:hover {
     background-color: #1e40af;
+}
+
+.upload-form button[type="submit"] {
+    align-self: flex-start;
+    padding: 12px 24px;
+    font-size: 1rem;
 }
 
 button {
@@ -237,14 +423,102 @@ button:hover {
     border: 1px solid rgba(59, 130, 246, 0.5);
 }
 
+.badge .doc-link,
+a.default-doc-link {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+.badge .doc-link:hover,
+a.default-doc-link:hover {
+    color: #bfdbfe;
+}
+
+a.default-doc-link {
+    font-size: 0.9rem;
+}
+
 .meta {
     margin-bottom: 10px;
     font-size: 0.9rem;
     color: #e5e7eb;
 }
 
+#results-section .table-wrap {
+    overflow-x: auto;
+    margin-bottom: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(71, 85, 105, 0.5);
+}
+
+.compare-section {
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid #334155;
+}
+
+.compare-section h3 {
+    margin: 0 0 6px 0;
+    font-size: 1.1rem;
+}
+
+.compare-hint {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.compare-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.compare-controls select {
+    min-width: 280px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #4b5563;
+    background: rgba(15, 23, 42, 0.8);
+    color: #e5e7eb;
+    font-size: 0.95rem;
+}
+
+#compare-btn {
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: #fff;
+}
+
+.compare-result {
+    margin-top: 8px;
+}
+
+.compare-meta {
+    margin: 0 0 10px 0;
+    font-size: 0.9rem;
+    color: #94a3b8;
+}
+
+.compare-date {
+    font-size: 0.85em;
+    opacity: 0.9;
+}
+
+.compare-table .row-diff {
+    background: rgba(251, 191, 36, 0.08);
+}
+
+.compare-table .cell-diff {
+    background: rgba(251, 191, 36, 0.2);
+    font-weight: 600;
+}
+
 table {
     width: 100%;
+    min-width: 520px;
     border-collapse: collapse;
     border-radius: 12px;
     overflow: hidden;

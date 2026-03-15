@@ -5,8 +5,13 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential && \
-    rm -rf /var/lib/apt/lists/*
+# build-essential: pypdf/cryptography; tesseract + poppler: OCR szkennelt PDF-hez (pdf2image + pytesseract)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    tesseract-ocr \
+    tesseract-ocr-hun \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt

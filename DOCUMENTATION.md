@@ -90,6 +90,7 @@
 
 ### Feldolgozási előzmény (tesztelési történet)
 - **Minden** futtatás (alapértelmezett PDF elemzés és feltöltés is) eredménye belekerül a **data/processed.json** fájlba (időbélyeg, forrás, doc_label, modell, hallgató, intézmény, rekordszám, hiba, teljes result lista).
+- **Sikertelen futások** (Groq hiba, PDF kinyerés, timeout, stb.) a **data/failure_log.jsonl** fájlba kerülnek (JSONL: egy sor = egy JSON). Cél: finomhangolás bemenete, ne találgatás. A Groq válaszból (státusz, rate limit header-ek, response snippet) és a futás adataiból (doc_label, modell, error_type) minden sikertelen futás rögzítve. Részletes szabály és **folyamat** (mindig a log együttes átnézése a további lépés előtt): [FAILURE-LOG.md](FAILURE-LOG.md).
 - A lista legfeljebb **500** bejegyzés (régebbiek törlődnek). A fájl a konténerben **/app/data** alatt van; Docker volume **./data:/app/data** miatt a host (NAS) **data/** mappájában marad.
 - **Minden deploy során** (lokális **deploy-nas.sh** és a GitHub Actions deploy is) a jelenlegi **data/processed.json** másolódik **data/archive/processed_YYYYMMDD_HHMMSS.json** néven, így megmarad a teljes tesztelési történet deployonként.
 - **Összehasonlítás:** a webfelület az Eredmények alatt „Összehasonlítás korábbi futtatással” szekcióval kínálja a **GET /api/history** alapján egy korábbi futtatás kiválasztását; az „Összehasonlítás” gomb soronkénti eltérést mutat (pl. osztályzat most vs. korábbi).
@@ -189,6 +190,152 @@ Ha az OCR próba sikertelen, a **Log** panel (vagy a szerver log) tartalmazza a 
 
 ---
 
+## 5.2 Layout detection az OCR előtt (trükk a jobb transcript felismeréshez)
+
+A legtöbb naiv pipeline: **PDF → OCR → szöveg**, és abból próbálunk strukturált adatot nyerni. A hibák gyakran abból adódnak, hogy az OCR nem tudja, hogy *mi* az adott régió: táblázat, fejléc, oszlop, jegyzet stb.
+
+**Erősebb megközelítés:**
+
+- **PDF → layout detection → OCR (régiónként) → strukturált rekordok**
+
+A layout detection megmondja: ez egy *table*, ez egy *text block*, ez *title*, *figure*, *list*. Az OCR (vagy a szövegkinyerés) ezekkel a címkékkel tud külön kezelni régiókat, így pontosabb a táblázat cellák és a fejléc/footer szétválasztása.
+
+**Transcriptnél ez konkrétan azt jelenti:** a dokumentum régióit felismerjük, pl.:
+
+- **COURSE TABLE** (tárgyak, kredit, osztályzat)
+- **GPA SUMMARY**
+- **TRANSFER CREDIT TABLE**
+- fejléc / footer / jegyzet
+
+Ezek után régiónként (pl. „csak a COURSE TABLE blokk”) futtatjuk az OCR-t vagy a szövegkinyerést, és a Groq-nak már jelzett blokkokat adunk („ez a tárgytáblázat”, „ez a GPA összesítő”), ami segíthet a helyes mezők kitöltésében.
+
+**Eszközök (open source):**
+
+- **LayoutParser** – layout elemzés, különböző backend modellekkel.
+- **Detectron2** (Facebook) – objektumdetektálás, layout modellekhez is használják.
+- **PubLayNet** modellek – dokumentumlayoutra tanítva, felismerik pl.: *table*, *text block*, *title*, *figure*, *list*.
+
+**Miért nem „ágyúféleség”?** A layout detection **csökkenti az LLM-függőséget**: kevesebb szöveg megy a modellnek (csak a releváns blokkok, pl. course table), gyorsabb és olcsóbb a futtatás, kevésbé érzékeny a rate limitre. Ha a táblázat struktúrája (sorok, oszlopok) kiderül, a cellák kinyerése részben **determinisztikus** (rule-based) is lehet, az LLM csak a tisztázatlan vagy szabad szövegű mezőknél kell. Összefoglalva: nem csak minőség, hanem **kevesebb/látékonyabb LLM használat** – lassú és drága helyett inkább layout + kisebb, célzott prompt.
+
+**Jelenlegi állapot:** A PDFAI most a 5. szakasz szerint kinyeri a szöveget (pypdf → pdfplumber → PyMuPDF → OCR), layout detection **nincs** beépítve. Ez a szakasz a koncepciót dokumentálja egy **későbbi fejlesztés** (vagy kísérlet) számára: jobb minőség *és* kisebb LLM-függőség érdekében érdemes kipróbálni egy layout-detection lépést az OCR előtt, régiónként szöveget nyerni, és csak a releváns blokkokat (címkével) a Groq-nak adni, vagy a táblázatot rule-baseden feldolgozni.
+
+---
+
+## 5.3 Table-aware OCR (a második trükk)
+
+**Transcript = táblázat.** Ha sima OCR fut az oldalon, a kimenet lapos szöveg: `cell1 cell2 cell3 cell1 cell2 cell3` – a sor/oszlop/cella struktúra elvész, az LLM vagy a rule-based logika nehezebben tudja értelmezni.
+
+**Table-aware megközelítés:** ne az egész oldalt OCR-öljük, hanem:
+
+1. **Table detection** – hol van a táblázat.
+2. **Cell segmentation** – sorok, oszlopok, cellák felismerése.
+3. **OCR per cell** – cellánként futtatjuk az OCR-t; a kimenet már **row / column / cell** struktúrában marad.
+
+Így a transcript adatai (tárgy, kód, kredit, osztályzat) cella-szinten kaphatók, determinisztikusan vagy minimális LLM-mel.
+
+**Eszközök (open source):**
+
+- **Camelot** – táblázat kinyerés (lattice / stream).
+- **Tabula** – táblázat kinyerés.
+- **pdfplumber** – már a pipeline-ban van; táblázat kinyerést is tud (`extract_tables()`), jelenleg főleg szöveghez használjuk.
+- **OCR alapú, táblázatra:** PaddleOCR table mode, Microsoft Table Transformer.
+
+**Tipikus pipeline:**
+
+```
+PDF page
+   ↓
+table detection
+   ↓
+cell segmentation
+   ↓
+OCR per cell
+```
+
+Tapasztalati megállapítás: ez a lépés a táblázatos transcript hibák **nagy részét** (nagyságrendileg ~95%) megoldja, mert a struktúra megmarad.
+
+**Implementálandók listáján:** layout detection (5.2) és table-aware OCR (5.3) együtt – előbb layout (hol a „course table” blokk), aztán a blokkon belül table detection → cell segmentation → OCR per cell; a cella-szintű kimenet pedig csökkenti az LLM terhet vagy teljesen rule-based rekordra alakítható.
+
+---
+
+## 5.4 Bounding box OCR és további trükkök (implementálandók)
+
+A következő ötletek egy determinisztikus, LLM-nélküli (vagy minimális LLM) pipeline részei; összegyűjtve a 3.–12. trükk, költség és egy gyakorlati tanács.
+
+### 3. Harmadik trükk: bounding box OCR
+
+- **Sima OCR:** csak `text`.
+- **Jobb OCR:** `text + bounding box` (x, y), pl. `{ "text": "Child Psychology", "x": 120, "y": 350 }`.
+- **Miért jó:** row grouping (hasonló y → ugyanaz a sor), column grouping; így rekonstruálható a táblázat. Egyszerű szabály: ha y koordináta hasonló → ugyanaz a sor.
+
+### 4. Negyedik trükk: column clustering
+
+- Transcriptben jellemzően: **COURSE | CODE | TERM | CREDIT | GRADE**.
+- Ha van bounding box: összes **x** koordináta → **K-means clustering** → oszlophatárok. Pl. x = [120, 140, 150] → column 1, x = [350, 360] → column 2, x = [550] → column 3. Így **LLM nélkül** rekonstruálható a táblázat.
+
+### 5. Ötödik trükk: regex-alapú mezőfelismerés
+
+- Transcript mezők nagyon standardek; regex-el **nagyon stabil** extraction:
+  - **Kurzuskód:** `[A-Z]{2,4}\s?\d{3}` vagy `[A-Z]{3,4}\s?\d{5}`
+  - **Kredit:** `\d(\.\d)?`
+  - **Osztályzat:** `A|A-|B\+|B|B-|C\+|PA|CR`
+  - **Félév:** `(Autumn|Fall|Spring|Winter)\s?\d{4}`
+
+### 6. Hatodik trükk: dictionary matching
+
+- Transcript tárgynevek gyakran ismétlődnek; lehet **dictionary** (pl. CALCULUS I, INTRO TO ACCOUNTING I). OCR fuzzy match: „CALCULUS 1”, „CALCULUS l”, „CALCULUS I” → mind ugyanaz. **Eszköz:** rapidfuzz.
+
+### 7. Hetedik trükk: transfer table felismerés
+
+- Sok transcript: **Original Course | Equivalent**. Szabály: ha egy sorban **két kurzuskód** van → transfer table (pl. PSYC 20651 | PSY 333). Pipeline: `if count(course_code) > 1: mark_as_transfer`.
+
+### 8. Nyolcadik trükk: page segmentation
+
+- Transcript oldal tipikus: **header** / **course table** / **footer**. Footer sokszor: „Page 1 of 3”. Regex: `Page \d+ of \d+` → kidobható.
+
+### 9. Kilencedik trükk: sor validáció
+
+- Egy valid transcript sor általában **legalább 3 mezőt** tartalmaz (pl. course, credit, grade). Ha az OCR sor pl. csak „CALCULUS” → **dobjuk**.
+
+### 10. Tizedik trükk: determinisztikus pipeline
+
+- Nagyon stabil lánc:
+  ```
+  PDF
+   ↓
+  page image
+   ↓
+  layout detection
+   ↓
+  table detection
+   ↓
+  cell segmentation
+   ↓
+  OCR per cell
+   ↓
+  regex parsing
+   ↓
+  row validation
+   ↓
+  CSV
+  ```
+  **LLM:** 0 vagy csak QA (quality check).
+
+### 11. Költség (tipikus)
+
+- **LLM pipeline:** 1000 transcript ≈ **$20–80**.
+- **OCR (determinisztikus) pipeline:** 1000 transcript ≈ **$1–3**.
+
+### 12. Gyakorlati trükk: OCR output hash
+
+- **Hash-eld** az OCR kimenetet: `sha256(text)`. Ha két futás hash-e **különbözik** → az OCR kimenet változott → segít debugolni (regresszió, flaky OCR).
+
+---
+
+Ezek a trükkök (5.2, 5.3, 5.4) az **implementálandók** listáján vannak. A **LLM-mentes transcript pipeline** (toolchain, ~200 soros példa, OCR összehasonlítás, preprocessing, hash) és az **elfogadott lépések / stratégia** (nincs kódváltoztatás a main PDFAI-ban; kísérlet = fork vagy külön projekt; visszahozatal csak meggyőző eredmény esetén) a **[TRANSCRIPT-PIPELINE-REFERENCE.md](TRANSCRIPT-PIPELINE-REFERENCE.md)** fájlban van dokumentálva.
+
+---
+
 ## 6. Futtatás
 
 ### Lokál (venv)
@@ -214,24 +361,23 @@ docker compose up -d --build
 
 ---
 
-## 7. Deploy (NAS, GitHubon át)
+## 7. Deploy (NAS, lokálból)
 
 ### Folyamat
-1. Push a **main** branchre (vagy manuális **Run workflow** a **Deploy to NAS** workflow-ra).
-2. GitHub Actions: **webfactory/ssh-agent** betölti a **NAS_SSH_PRIVATE_KEY** titkot.
-3. SSH a NAS-ra: **NAS_USER@NAS_HOST**.
-4. A **NAS_PROJECT_PATH** (vagy `~/PDFAI`) mappában: `git fetch origin && git reset --hard origin/main`, majd `docker compose up -d --build` (vagy `docker-compose`).
+A deploy **nem** fut GitHub Actions-ban (a Synology sajátosságai miatt az automata deploy el lett távolítva). Lokálisan futtatod:
 
-### Szükséges GitHub Secrets
-- **NAS_HOST** – NAS címe (IP vagy hostname).
-- **NAS_USER** – SSH felhasználó.
-- **NAS_SSH_PRIVATE_KEY** – SSH privát kulcs teljes szövege.
-- **NAS_PROJECT_PATH** (opcionális) – a repo mappája a NAS-on (pl. `/volume1/docker/PDFAI`).
+1. **release.sh** (verzió + deploy + git): `./release.sh 1.2.15` — kérdezi a pdf/ tesztet, frissíti a VERSION-t, meghívja a **deploy-nas.sh**-t, majd commit + tag + push.
+2. **deploy-nas.sh**: tarball (kód, Dockerfile, static, stb.) SSH pipe-pal feltölti a NAS **NAS_PATH** mappájába, archiválja a data/processed.json-t, majd `docker compose up -d --build`.
+
+### Változók (deploy-nas.sh, env felülírja)
+- **NAS_USER** – SSH felhasználó (alap: pl. sitkeitamas).
+- **NAS_HOST** – NAS hostname vagy IP (pl. dsm.sitkeitamas.hu).
+- **NAS_PATH** – Projekt mappa a NAS-on (pl. /volume1/docker/PDFAI).
 
 ### NAS előkészítés
 - Docker (Synology csomag) és SSH engedélyezve.
-- A projekt mappa klónozva (egyszer), benne **.env** (GROQ_API_KEY, stb.) – ezt ne commitoljuk.
-- SSH kulcs: a privát a GitHub Secret, a publikus a NAS `authorized_keys`-ben.
+- A projekt mappa a NAS-on (egyszer létrehozva), benne **.env** (GROQ_API_KEY, stb.) – ezt nem töltjük fel a scripttel.
+- SSH kulcs: a **publikus** kulcs a NAS `authorized_keys`-ében, a **privát** a gépeden (~/.ssh/); semmi nem kerül a repóba.
 
 ---
 
@@ -244,4 +390,4 @@ docker compose up -d --build
 - **Groq darabolás:** 4k kar chunkok, sortörésnél vágás, chunkok között 30 s delay; 413/429 miatt így alakult; 429-nél barátságos hibaüzenet; tokenhasználat és maradék limit az eredményeknél.
 - **Előzmény és összehasonlítás:** data/processed.json, deploy során archive; GET /api/history, webfelületen soronkénti eltérés korábbi futtatással.
 - **PDF szövegkinyerés:** pypdf → pdfplumber → PyMuPDF → OCR (tesseract + poppler a Dockerfile-ban); hibaelhárítás: 5.1.
-- **Deploy:** GitHub Actions SSH-val a NAS-ra, git pull + docker compose up; lokális release: release.sh (VERSION, opcionális teszt, deploy-nas.sh, commit, tag, push).
+- **Deploy:** Csak lokális release.sh (VERSION, opcionális teszt, deploy-nas.sh, commit, tag, push); nincs GitHub Actions deploy.
